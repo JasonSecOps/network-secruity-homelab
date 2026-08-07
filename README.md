@@ -26,8 +26,14 @@ Static IP addresses are assigned to the lab interfaces:
 | Ubuntu Server | 192.168.100.20 |
 
 The lab interfaces are used for communication between the two virtual machines, while the second network adapters provide internet connectivity through the Hyper-V Default Switch.
+<img width="1320" height="1760" alt="3943CAAF-D380-4AD7-B0DB-E87399F1DE22" src="https://github.com/user-attachments/assets/4694809a-c640-47bf-989c-8fa69a22c2e3" />
+<img width="1320" height="1760" alt="14F1C5ED-17C3-425E-9C5B-70E87D64E173" src="https://github.com/user-attachments/assets/44d30677-72da-4153-8913-d53dde2c04d9" />
+
 ## Troubleshooting
 Initially, Kali Linux and Ubuntu Server were unable to communicate with each other over the lab network.
+<img width="1320" height="1760" alt="647B6EF2-D58A-40C9-BBB1-B577D56357D7" src="https://github.com/user-attachments/assets/0e5a1dff-e8bc-41e9-ae1b-79a9d87aa2cc" />
+
+<img width="1320" height="1760" alt="398548D9-175D-40F1-A47B-9373E1B31070" src="https://github.com/user-attachments/assets/12b6a584-4d38-4bab-8de6-e6447f3ef897" />
 
 ### Problem
 
@@ -46,6 +52,7 @@ Kali Linux was configured with:
 192.168.100.10/24
 
 The Hyper-V network adapter configuration was then corrected so both virtual machines were connected to the same lab network.
+<img width="1320" height="1760" alt="D7930AA1-B9C0-4751-8D6F-3B8D70E387C8" src="https://github.com/user-attachments/assets/0dd52fa0-3904-441c-8cc7-d7e13c424b24" />
 
 ### Verification
 
@@ -53,7 +60,9 @@ Connectivity was verified using ICMP ping between both systems.
 
 After correcting the configuration, Kali Linux and Ubuntu Server were able to communicate successfully.
 ## SSH Setup
-SSH was configured on the Ubuntu Server to allow remote administration from Kali Linux.
+SSH was configured on the Ubuntu Server to allow remote administration from Kali Linux.<img width="1320" height="1760" alt="D6DE0992-D2FD-42F6-9B87-656D94F04E04" src="https://github.com/user-attachments/assets/c53509be-1cb0-4064-aac1-58753c18f2bb" />
+
+<img width="1320" height="1760" alt="D6DE0992-D2FD-42F6-9B87-656D94F04E04" src="https://github.com/user-attachments/assets/c3467268-5338-4636-96bd-321989853ed7" />
 
 ### SSH Server
 
