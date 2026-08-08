@@ -79,11 +79,54 @@ ssh jasonsecops@192.168.100.20
 The SSH connection was successfully established from Kali Linux to Ubuntu Server.
 
 This allows the Ubuntu Server to be administered remotely from the Kali Linux terminal without directly interacting with the Ubuntu virtual machine.
+
+## ARP Analysis with Wireshark
+ARP traffic between Kali Linux and the Ubuntu Server was captured and analyzed using Wireshark.
+
+When Kali Linux needed to communicate with 192.168.100.20, ARP was used to resolve the IP address to the corresponding MAC address.
+
+The ARP request was sent as an Ethernet broadcast because the destination MAC address was not yet known. Ubuntu then responded with an ARP reply containing its MAC address.
+
+This demonstrated how ARP maps IPv4 addresses to MAC addresses within the local Layer 2 network.
+
+<img width="1005" height="563" alt="Wireshark ARP" src="https://github.com/user-attachments/assets/4905ea2d-8620-46b6-a656-7fa24005e06d" />
+## TCP & SSH Analysis with Wireshark
+SSH traffic between Kali Linux and the Ubuntu Server was captured and analyzed with Wireshark.
+
+The TCP three-way handshake was observed before the SSH session was established:
+
+1. SYN – Kali initiates the TCP connection to port 22.
+2. SYN-ACK – Ubuntu acknowledges the request and synchronizes its own sequence number.
+3. ACK – Kali acknowledges Ubuntu's response and the TCP connection is established.
+
+TCP sequence and acknowledgment numbers were also analyzed. Sequence numbers identify positions within the TCP byte stream, while acknowledgment numbers indicate the next sequence number expected by the receiver.
+
+The TCP connection termination using FIN and ACK packets was also observed.
+
+<img width="1003" height="765" alt="Wireshark TCP 1" src="https://github.com/user-attachments/assets/6e1dcd67-6956-436d-8fc6-91ae2d1c928b" />
+## Basic Network Troubleshooting
+
+Basic network troubleshooting was performed from Kali Linux to identify connectivity and service-related issues.
+
+The following tools were used:
+
+- `ip addr` to verify interface and IP configuration
+- `ip route` to inspect the routing table and determine which interface is used
+- `ping` to verify IP connectivity to the Ubuntu Server
+- `nmap` to check the state of TCP ports
+
+Different Nmap port states were tested:
+
+- `open` – the service is listening and reachable
+- `closed` – the host is reachable, but no service is listening on the port
+- `filtered` – traffic is being filtered, for example by a firewall
+
+A firewall rule was temporarily applied to TCP port 22, changing the Nmap result from `open` to `filtered`. After removing the test configuration, SSH connectivity was restored.
+
+<img width="639" height="469" alt="Firewall port 22 rules" src="https://github.com/user-attachments/assets/d7efd305-a1f3-4c3f-8188-be5dc4c8867b" />
 ## Next Steps
 The next steps for this homelab are:
-
-- Capture and analyze network traffic with Wireshark
-- Practice basic network reconnaissance with Nmap
-- Analyze TCP connections and common network protocols
 - Add additional services to the Ubuntu Server
-- Document future troubleshooting and configuration changes
+- Expand the lab with additional network services and configurations
+- Continue practicing network troubleshooting and traffic analysis
+
