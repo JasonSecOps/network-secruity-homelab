@@ -124,6 +124,7 @@ Different Nmap port states were tested:
 A firewall rule was temporarily applied to TCP port 22, changing the Nmap result from `open` to `filtered`. After removing the test configuration, SSH connectivity was restored.
 
 <img width="639" height="469" alt="Firewall port 22 rules" src="https://github.com/user-attachments/assets/d7efd305-a1f3-4c3f-8188-be5dc4c8867b" />
+
 ## Next Steps
 The next steps for this homelab are:
 - Add additional services to the Ubuntu Server
