@@ -125,9 +125,75 @@ A firewall rule was temporarily applied to TCP port 22, changing the Nmap result
 
 <img width="639" height="469" alt="Firewall port 22 rules" src="https://github.com/user-attachments/assets/d7efd305-a1f3-4c3f-8188-be5dc4c8867b" />
 
+## SSH Hardening and Firewall Configuration 
+
+## SSH Key-Based Authentication
+SSH key-based authentication was configured between the Kali Linux client
+(192.168.100.10) and the Ubuntu server (192.168.100.20).
+
+Password authentication was disabled and public key authentication was enabled.
+
+Verified SSH configuration:
+
+- `PermitRootLogin no`
+- `PasswordAuthentication no`
+- `PubkeyAuthentication yes`
+
+A connection attempt without public key authentication was rejected with:
+
+`Permission denied (publickey).`
+
+A normal SSH connection using the configured Ed25519 key was successful.
+
+
+
+<img width="645" height="636" alt="new ssh login configs pubkey password" src="https://github.com/user-attachments/assets/5bbf1206-f8f9-48e4-bbc9-facf5008fa4e" />
+
+
+<img width="798" height="650" alt="key login succesful" src="https://github.com/user-attachments/assets/a3d99e08-dfb1-4cae-bf73-eeb37b661cbd" />
+
+### UFW Firewall Configuration
+
+UFW was enabled on the Ubuntu server with a default-deny policy for incoming traffic.
+
+SSH access was restricted to the Kali Linux host:
+
+- Kali Linux: `192.168.100.10`
+- Ubuntu Server: `192.168.100.20`
+- Allowed service: SSH (`TCP/22`)
+
+Firewall rule:
+
+`ALLOW IN 192.168.100.10 -> TCP/22`
+
+This ensures that SSH remains reachable from the authorized Kali host while other unsolicited incoming connections are blocked.
+
+<img width="641" height="345" alt="linux firewall rules allow only pakets from kali" src="https://github.com/user-attachments/assets/79f4a126-b3a3-4bb5-8c0b-fe6bf4ec2723" />
+
+
+### Firewall Testing with Nmap
+
+The firewall behavior was tested from Kali Linux using an Nmap SYN scan.
+
+Port 22 was reachable because it was explicitly allowed by the firewall:
+
+`22/tcp open ssh`
+
+A scan against TCP port 8080 returned:
+
+`8080/tcp filtered`
+
+The `filtered` state indicates that the firewall prevented Nmap from receiving the normal TCP response required to determine whether the port was open or closed.
+
+<img width="640" height="247" alt="nmap kali port 8080 filtered " src="https://github.com/user-attachments/assets/e835ff1f-5a98-499a-a5a3-b27cbae8dffd" />
+
+<img width="1016" height="806" alt="nmap port 22 open allow pakets " src="https://github.com/user-attachments/assets/06f12276-9430-46a6-878f-1e97a9058297" />
+
 ## Next Steps
+
 The next steps for this homelab are:
-- Add additional services to the Ubuntu Server
+- Analyze firewall logs and blocked network traffic
+- Deploy and secure additional services on the Ubuntu server
 - Expand the lab with additional network services and configurations
 - Continue practicing network troubleshooting and traffic analysis
 
