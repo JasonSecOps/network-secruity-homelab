@@ -3,16 +3,19 @@ My personal cybersecruity homelab for networking, Linux and secruity practice
 ## Overview
 This repository documents my personal secruity homelab.
 The goal of this lab is to build practical skills in networking, Linux administration and cybersecruity by creating and troubleshooting my own virtual network environment.
-the lab currently consists of an Ubuntu Server and a Kali Linux machine running as virtual machines on Hyper-V
+The lab currently consists of two Ubuntu systems and one Kali Linux machine running as virtual machines on Hyper-V.
 ## Lab Architecture
 The homelab runs on a Windows Host using Hyper-V for virtualization
 ## Virtual Maschines
-- Ubuntu Server - target/server system
-- Kali Linux - secruity and administration workstation
+- **Ubuntu Server** – Target/server system
+- **Ubuntu 2** – Additional Linux client for network and access-control testing
+- **Kali Linux** – Security and administration workstation
+
 ## Virtual Networking
-Both virtual maschines use two virtual network adapters:
-- Lab network adapter - used for direct communication between Kali Linux and Ubuntu
-- Default Switch - used to provide internet access to the virtual maschines
+All three virtual machines use two virtual network adapters:
+- **Lab network adapter** – Used for direct communication between the virtual machines
+- **Default Switch** – Provides Internet access to the virtual machines
+
 ## Network Configuration
 The lab network uses the private subnet:
 
@@ -24,6 +27,7 @@ Static IP addresses are assigned to the lab interfaces:
 |---|---|
 | Kali Linux | 192.168.100.10 |
 | Ubuntu Server | 192.168.100.20 |
+| Ubuntu 2 | 192.168.100.30 |
 
 The lab interfaces are used for communication between the two virtual machines, while the second network adapters provide internet connectivity through the Hyper-V Default Switch.
 <img width="1320" height="1760" alt="3943CAAF-D380-4AD7-B0DB-E87399F1DE22" src="https://github.com/user-attachments/assets/4694809a-c640-47bf-989c-8fa69a22c2e3" />
@@ -189,11 +193,177 @@ The `filtered` state indicates that the firewall prevented Nmap from receiving t
 
 <img width="1016" height="806" alt="nmap port 22 open allow pakets " src="https://github.com/user-attachments/assets/06f12276-9430-46a6-878f-1e97a9058297" />
 
+### Testing Firewall Behavior with a Temporary HTTP Server
+
+To better understand the difference between an open port, a closed port, and firewall filtering, a temporary HTTP server was started on the Ubuntu server using Python.
+
+The temporary HTTP server was started on TCP port 8080:
+
+```bash
+python3 -m http.server 8080
+```
+
+The port was then tested from Kali Linux using Nmap:
+
+```bash
+nmap -p 8080 192.168.100.20
+```
+
+During the experiment, different port states could be observed depending on the firewall configuration and whether a service was actually listening on the port.
+
+- **filtered** – Network traffic is being blocked or dropped by the firewall.
+- **closed** – The host is reachable, but no service is currently listening on the port.
+- **open** – A service is listening on the port and the firewall allows the connection.
+
+This experiment demonstrated an important distinction between firewall rules and services: allowing TCP port 8080 through the firewall does not automatically make the port open. A service must also be actively listening on that port.
+
+<img width="615" height="202" alt="nmap port 8080 reject" src="https://github.com/user-attachments/assets/d96f3f40-5ff2-4f7f-a853-33230eb459f0" />
+
+<img width="557" height="189" alt="python3 nmap webserver port open" src="https://github.com/user-attachments/assets/c331a2a8-d26a-44f9-8bf8-d9e8697522d4" />
+
+This experiment demonstrated an important distinction between firewall rules and services: allowing TCP port 8080 through the firewall does not automatically make the port open. A service must also be actively listening on that port.
+### Adding a Second Ubuntu Client and Testing Subnet-Based SSH Access
+
+A second Ubuntu virtual machine was added to the lab to test firewall rules with multiple hosts.
+
+The new system was assigned the following LabNet address:
+
+```text
+Ubuntu 2: 192.168.100.30/24
+```
+
+The existing systems are:
+
+```text
+Kali Linux: 192.168.100.10
+Ubuntu Server: 192.168.100.20
+Ubuntu 2: 192.168.100.30
+```
+
+Connectivity from Ubuntu 2 to the Ubuntu server was verified using ICMP:
+
+```bash
+ping 192.168.100.20
+```
+
+<img width="587" height="179" alt="icmp verify" src="https://github.com/user-attachments/assets/ff682dff-a161-4a70-87d2-4339a360eed1" />
+
+
+The Ubuntu server was configured with a UFW rule allowing SSH access from the entire LabNet subnet:
+
+```bash
+sudo ufw allow from 192.168.100.0/24 to any port 22 proto tcp
+```
+
+This allows all hosts inside `192.168.100.0/24` to reach TCP port 22 on the Ubuntu server.
+
+Ubuntu 2 initially reached the SSH service, but authentication failed because its public key had not yet been added to the server:
+
+```text
+Permission denied (publickey)
+```
+
+A new ED25519 SSH key pair was created on Ubuntu 2:
+
+```bash
+ssh-keygen
+```
+
+The public key was then transferred to Kali Linux using a temporary Python HTTP server.
+
+On Ubuntu 2:
+
+```bash
+python3 -m http.server 8080
+```
+
+<img width="637" height="185" alt="ssh private key config " src="https://github.com/user-attachments/assets/a97e5cd0-4a98-452b-af78-8f54d1a9df26" />
+
+
+
+On Kali Linux:
+
+```bash
+wget http://192.168.100.30:8080/id_ed25519.pub
+```
+
+<img width="623" height="185" alt="ssh public key config " src="https://github.com/user-attachments/assets/f058096a-35b7-4a19-9018-8beff87deda5" />
+
+
+
+
+
+The downloaded public key was then appended to the Ubuntu server's `authorized_keys` file through Kali's existing SSH access:
+
+```bash
+cat id_ed25519.pub | ssh jasonsecops@192.168.100.20 'cat >> ~/.ssh/authorized_keys'
+```
+<img width="623" height="217" alt="ssh private key succesful on ubuntu 2 " src="https://github.com/user-attachments/assets/0be410ec-f1b4-4047-ab17-19f8288741cf" />
+
+After adding the key, Ubuntu 2 successfully authenticated to the Ubuntu server using SSH:
+
+```bash
+ssh jasonsecops@192.168.100.20
+```
+
+The active SSH connection was verified with:
+
+```bash
+echo $SSH_CONNECTION
+```
+
+<img width="522" height="43" alt="SSH connection ports" src="https://github.com/user-attachments/assets/6edf302c-addb-48ac-9925-e7b724f46b3c" />
+
+Example result:
+
+```text
+192.168.100.30 43626 192.168.100.20 22
+```
+
+This confirms that Ubuntu 2 (`192.168.100.30`) established an SSH connection to the Ubuntu server (`192.168.100.20`) on TCP port 22.
+
+<img width="645" height="487" alt="connection done" src="https://github.com/user-attachments/assets/3e0dee49-5b48-4363-9c88-a4f180c51d6a" />
+
+### Comparing Firewall DROP and REJECT Behavior
+
+Different firewall responses were tested to understand how blocked TCP connections appear during network analysis.
+
+When traffic is silently dropped by the firewall, the sender does not receive a TCP response. Nmap therefore reports the port as:
+
+```text
+filtered
+```
+
+This behavior makes it difficult for the scanning host to determine whether a service exists behind the firewall.
+
+A firewall can also explicitly reject a TCP connection instead of silently dropping it. In this case, the receiving system actively informs the sender that the connection is not accepted.
+
+During packet analysis, a TCP packet containing the `RST, ACK` flags was observed.
+
+```text
+RST, ACK
+```
+
+<img width="960" height="678" alt="Wireshark port 8080 RST" src="https://github.com/user-attachments/assets/782b8cd7-41b6-407a-931a-fb508288018c" />
+
+`RST` resets the TCP connection, while `ACK` acknowledges the previously received TCP segment.
+
+This demonstrates an important difference between the two firewall behaviors:
+
+- **DROP** — silently discards the packet and normally sends no response.
+- **REJECT** — refuses the connection and actively returns a response.
+
+From a security perspective, DROP reveals less information to an external scanner, while REJECT provides faster and clearer feedback that the connection is not permitted.
+
+
+
 ## Next Steps
 
 The next steps for this homelab are:
+
 - Analyze firewall logs and blocked network traffic
-- Deploy and secure additional services on the Ubuntu server
-- Expand the lab with additional network services and configurations
-- Continue practicing network troubleshooting and traffic analysis
+- Investigate SSH authentication logs
+- Configure Fail2ban for SSH protection
+- Further analyze TCP behavior with Wireshark
+- Explore network segmentation and routing between multiple lab networks
 
