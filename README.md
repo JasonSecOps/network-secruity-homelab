@@ -356,6 +356,66 @@ This demonstrates an important difference between the two firewall behaviors:
 From a security perspective, DROP reveals less information to an external scanner, while REJECT provides faster and clearer feedback that the connection is not permitted.
 
 
+## SSH Authentication Monitoring and Fail2ban
+
+SSH authentication activity was monitored on the Ubuntu server to observe failed login attempts and understand how authentication events are recorded.
+
+### Monitoring SSH Authentication Attempts
+
+SSH authentication events were inspected using the system logs. Failed SSH login attempts from the second Ubuntu client (`192.168.100.30`) were generated intentionally in the isolated lab environment.
+
+The logs showed the source IP address and the failed authentication attempts, demonstrating how SSH activity can be monitored and investigated.
+
+### Fail2ban SSH Protection
+
+Fail2ban was installed and configured to monitor the SSH service.
+
+The `sshd` jail was enabled with the following relevant settings:
+
+- `maxretry = 5`
+- `findtime = 600`
+- `bantime = 600`
+
+This configuration allows five failed authentication attempts within a 10-minute window before the source IP address is temporarily banned for 10 minutes.
+
+### Testing Automatic Banning
+
+Multiple failed SSH authentication attempts were generated from Ubuntu 2:
+
+`192.168.100.30`
+
+<img width="619" height="216" alt="SSH fail2ban 1" src="https://github.com/user-attachments/assets/a45d18e0-3134-4840-a32a-812846e9cb21" />
+
+After the configured threshold was reached, Fail2ban detected the repeated failures and banned the source address.
+
+The Fail2ban log confirmed the action:
+
+`[sshd] Ban 192.168.100.30`
+
+<img width="661" height="218" alt="ssh fail2ban 3 list completly" src="https://github.com/user-attachments/assets/42d4feff-562c-4b13-96e6-66694629a516" />
+
+### Firewall Enforcement
+
+The active Fail2ban firewall rules were inspected using nftables.
+
+The Fail2ban address set contained:
+
+`192.168.100.30`
+
+Traffic from this address to TCP port 22 was rejected by the dynamically created Fail2ban rule.
+
+This demonstrates the complete detection and response process:
+
+Failed SSH authentication
+→ log entry
+→ Fail2ban detection
+→ retry threshold reached
+→ source IP added to ban set
+→ SSH traffic blocked by the firewall
+
+<img width="937" height="325" alt="ssh fail2ban 4 list " src="https://github.com/user-attachments/assets/0c2039b8-a67b-4c79-abb9-27ce616b7156" />
+
+After the ban expired, SSH access from Ubuntu 2 was restored automatically.
 
 ## Next Steps
 
