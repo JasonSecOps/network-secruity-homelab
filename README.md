@@ -417,13 +417,210 @@ Failed SSH authentication
 
 After the ban expired, SSH access from Ubuntu 2 was restored automatically.
 
+## Monitoring with Prometheus and Grafana
+
+To extend the homelab beyond network security and access control, a monitoring stack was implemented on the Ubuntu server.
+
+The monitoring architecture consists of three main components:
+
+- **Node Exporter** – collects system-level metrics from the Ubuntu server
+- **Prometheus** – periodically collects and stores the metrics provided by Node Exporter
+- **Grafana** – queries Prometheus and visualizes the collected metrics in dashboards
+
+The resulting monitoring flow is:
+
+```text
+Ubuntu Server
+│
+▼
+Node Exporter (:9100)
+│
+▼
+Prometheus (:9090)
+│
+▼
+Grafana (:3000)
+│
+▼
+Monitoring Dashboard
+```
+
+### Node Exporter
+
+Prometheus Node Exporter was installed on the Ubuntu server to expose operating system metrics such as CPU usage, memory utilization, disk activity, filesystem usage, and network statistics.
+
+The Node Exporter service exposes these metrics through an HTTP endpoint on TCP port `9100`.
+
+The endpoint was manually verified using:
+
+```bash
+curl http://localhost:9100/metrics
+```
+
+This confirmed that Node Exporter was successfully collecting and exposing system metrics.
+
+<img width="637" height="302" alt="Metrikenprüfung" src="https://github.com/user-attachments/assets/27e0c4c1-929d-4c87-a3ba-40bc08e58a2e" />
+
+
+### Prometheus
+
+Prometheus was installed as the central metrics collection and storage service.
+
+The configuration contains two monitoring targets:
+
+```yaml
+- job_name: prometheus
+static_configs:
+- targets: ['localhost:9090']
+
+- job_name: node
+static_configs:
+- targets: ['localhost:9100']
+```
+
+The `prometheus` target allows Prometheus to monitor its own operational metrics, while the `node` target retrieves system metrics from Node Exporter.
+
+Prometheus periodically performs HTTP requests to the `/metrics` endpoints and stores the resulting values as time-series data.
+
+The Prometheus Targets interface confirmed that both configured targets were successfully reachable:
+
+- `localhost:9090` – Prometheus
+- `localhost:9100` – Node Exporter
+
+Both targets reported the state **UP**.
+
+<img width="1005" height="638" alt="Prometheus targets" src="https://github.com/user-attachments/assets/e1d17199-ccee-4025-8b46-a92f21ad3cdd" />
+
+
+### Firewall Configuration
+
+Prometheus listens on TCP port `9090`.
+
+Because UFW is enabled on the Ubuntu server, remote access to the Prometheus web interface was initially blocked.
+
+Access was explicitly restricted to the Kali Linux host:
+
+```bash
+sudo ufw allow from 192.168.100.10 to any port 9090 proto tcp
+```
+
+This allows only the Kali host (`192.168.100.10`) to access the Prometheus web interface over the lab network.
+
+This demonstrates the difference between a service **listening on a network port** and that service actually being **reachable through the host firewall**.
+
+### Grafana Installation
+
+Grafana was installed using the official Grafana APT repository.
+
+The repository signing key was stored under:
+
+```text
+/etc/apt/keyrings/grafana.gpg
+```
+
+APT uses this key to verify the authenticity and integrity of packages obtained from the Grafana repository.
+
+After adding the repository, Grafana was installed through the system package manager and started as a systemd service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now grafana-server
+```
+
+The service status confirmed that Grafana was successfully running.
+
+<img width="635" height="412" alt="grafana succesfull running" src="https://github.com/user-attachments/assets/7e0f5eae-de78-4507-b43f-822c3eb8144a" />
+
+
+Grafana provides its web interface on TCP port `3000`.
+
+Access from the Kali Linux host was permitted through UFW:
+
+```bash
+sudo ufw allow from 192.168.100.10 to any port 3000 proto tcp
+```
+
+The Grafana interface could then be accessed from Kali at:
+
+```text
+http://192.168.100.20:3000
+```
+
+### Prometheus Data Source
+
+Prometheus was configured as the Grafana data source using:
+
+```text
+http://localhost:9090
+```
+
+`localhost` can be used because Grafana and Prometheus are running on the same Ubuntu server.
+
+The resulting data flow is:
+
+```text
+Node Exporter
+│
+▼
+Prometheus
+│
+▼
+Grafana
+│
+▼
+Dashboard
+```
+
+Grafana does not directly collect the operating system metrics. Instead, it queries the metrics already collected and stored by Prometheus.
+
+### Node Exporter Dashboard
+
+The **Node Exporter Full** Grafana dashboard was imported to visualize the collected metrics.
+
+The dashboard provides visibility into several areas of the Ubuntu server, including:
+
+- CPU utilization
+- Memory and swap usage
+- Filesystem utilization
+- Disk I/O
+- Network traffic
+- System load
+- System processes
+- Systemd services
+- Network sockets
+- System uptime
+
+<img width="1001" height="734" alt="grafana prometheus dashboard" src="https://github.com/user-attachments/assets/ec41bbdd-323c-485f-9426-6f473507a4af" />
+
+
+The dashboard confirms that the complete monitoring pipeline is operational:
+
+```text
+Ubuntu → Node Exporter → Prometheus → Grafana
+```
+
+### Monitoring Verification
+
+To verify that changes in system activity are detected by the monitoring stack, CPU load was intentionally generated on the Ubuntu server:
+
+```bash
+yes > /dev/null
+```
+
+The command continuously generates output and redirects it to `/dev/null`, causing CPU activity without filling the terminal with output.
+
+The resulting increase in CPU utilization could be observed through the Grafana dashboard, confirming that system activity is successfully collected by Node Exporter, stored by Prometheus, and visualized by Grafana.
+
+The test process was terminated using `Ctrl+C`.
+
+> **Note:** A detailed CPU load graph will be added after further monitoring tests.
+
 ## Next Steps
 
-The next steps for this homelab are:
-
-- Analyze firewall logs and blocked network traffic
-- Investigate SSH authentication logs
-- Configure Fail2ban for SSH protection
-- Further analyze TCP behavior with Wireshark
-- Explore network segmentation and routing between multiple lab networks
+- Configure Grafana alerts for CPU, memory and disk usage
+- Monitor SSH authentication events and Fail2Ban activity
+- Centralize and analyze system and security logs
+- Generate controlled test activity from the Kali Linux VM
+- Visualize security-relevant events in Grafana
+- Expand monitoring to additional hosts and services
 
