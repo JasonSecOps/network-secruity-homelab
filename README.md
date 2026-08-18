@@ -973,6 +973,118 @@ Grafana
 
 This provides the foundation for building a dedicated Grafana security dashboard that combines SSH authentication activity, Fail2Ban events, and infrastructure monitoring in a single interface.
 
+Network Routing, DNS and NAT Analysis
+
+After configuring the monitoring and logging stack, the lab was used to analyze how Linux handles local and external network communication.
+
+Routing Analysis
+
+<img width="638" height="249" alt="Routing 2 " src="https://github.com/user-attachments/assets/08b1b576-e63f-4113-ad72-34757f085ab3" />
+
+The Ubuntu server has two network interfaces:
+
+* eth0 – internal lab network (192.168.100.0/24)
+* eth1 – Hyper-V network with Internet connectivity
+
+The routing table was inspected with:
+
+ip route
+
+The system contained a direct route to the internal lab network:
+
+192.168.100.0/24 dev eth0
+
+and a default route through the Hyper-V network:
+
+default via 172.22.224.1 dev eth1
+
+To verify which route Linux selects for a specific destination, the following commands were used:
+
+ip route get 192.168.100.10
+ip route get 8.8.8.8
+
+Traffic to the Kali Linux VM (192.168.100.10) was sent directly through eth0, because both systems are located in the same subnet.
+
+Traffic to an external address such as 8.8.8.8 was instead sent through the default gateway on eth1.
+
+This demonstrates the difference between directly connected routes and a default route used for external networks.
+
+DNS Resolution
+
+The active DNS configuration was inspected using:
+
+resolvectl status
+
+The Ubuntu VM uses 172.22.224.1 as its DNS server through eth1.
+
+A DNS lookup was then performed with:
+
+resolvectl query example.com
+
+The query returned both IPv4 and IPv6 addresses.
+
+DNS record types observed:
+
+* A – IPv4 address
+* AAAA – IPv6 address
+
+A domain can resolve to multiple IP addresses, allowing the same service to be reachable through multiple endpoints.
+
+Capturing DNS Traffic
+
+<img width="629" height="386" alt="DNS traffic" src="https://github.com/user-attachments/assets/b41feb91-3859-45d6-8744-7936ed2e804e" />
+
+DNS traffic was captured directly on eth1 using:
+
+sudo tcpdump -ni eth1 'udp port 53'
+
+A new lookup for example.com generated both A and AAAA DNS queries.
+
+The capture showed the Ubuntu VM sending DNS requests to:
+
+172.22.224.1:53
+
+and receiving the corresponding IPv4 and IPv6 records in response.
+
+This confirmed that the DNS queries were transmitted using UDP port 53.
+
+NAT and Public Addressing
+
+The VM uses private IP addressing internally.
+
+The Ubuntu VM uses:
+
+172.22.231.19
+
+on its Hyper-V connected interface, while the Windows host is connected to the home network using a private 192.168.178.0/24 address range.
+
+The public IPv4 address visible to Internet services was checked with:
+
+curl -4 ifconfig.me
+
+The result was different from the VM’s private address, demonstrating that private addresses are translated before traffic reaches the public Internet.
+
+The public IP address is intentionally not included in this repository.
+
+Traffic Flow
+
+Ubuntu VM
+172.22.231.19
+|
+v
+Hyper-V / Windows networking
+|
+v
+Home network
+|
+v
+Router
+|
+v
+Public Internet
+
+This demonstrates the separation between private addressing inside the lab and the public address visible to external services.
+
 ## Next Steps
 
 - Configure Grafana alerts for CPU, memory and disk usage
