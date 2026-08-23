@@ -1085,12 +1085,107 @@ Public Internet
 
 This demonstrates the separation between private addressing inside the lab and the public address visible to external services.
 
+## Grafana Alerting with Webhook Receiver
+Grafana Alerting was configured to monitor CPU usage and automatically send alerts to a custom webhook receiver.
+
+### Architecture
+```text
+Node Exporter
+↓
+Prometheus
+↓
+Grafana Alert Rule
+↓
+Contact Point: LabHook
+↓
+HTTP POST Webhook
+↓
+Python Webhook Receiver
+```
+### CPU Alert Rule
+Grafana queries CPU metrics collected by Node Exporter through Prometheus.
+The following PromQL query calculates the current CPU utilization:
+```promql
+100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+```
+The query measures how much time the CPU spends in idle mode and subtracts this value from 100% to calculate the actual CPU utilization.
+For testing, the alert threshold was temporarily configured as:
+```text
+CPU > 0%
+```
+This ensured that the alert entered the `FIRING` state during testing.
+After the successful test, the threshold can be changed to a realistic value such as:
+```text
+CPU > 80%
+```
+### Grafana Contact Point
+A webhook Contact Point called `LabHook` was created.
+Webhook URL:
+```text
+http://127.0.0.1:8081
+```
+Grafana and the webhook receiver run on the same Ubuntu server. Therefore, the local loopback address `127.0.0.1` can be used.
+### Python Webhook Receiver
+A small Python HTTP server was created to receive alerts sent by Grafana.
+The server listens on TCP port `8081` and waits for HTTP POST requests.
+```python
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class Handler(BaseHTTPRequestHandler):
+def do_POST(self):
+length = int(self.headers.get("Content-Length", 0))
+body = self.rfile.read(length)
+print("\n--- Grafana Webhook received ---")
+print(body.decode("utf-8"))
+self.send_response(200)
+self.end_headers()
+self.wfile.write(b"OK")
+server = HTTPServer(("127.0.0.1", 8081), Handler)
+print("Webhook receiver waiting on port 8081...")
+server.serve_forever()
+```
+The receiver can be started with:
+```bash
+python3 ~/webhook_receiver.py
+```
+### Successful Alert Test
+The Grafana alert rule successfully entered the `FIRING` state and automatically sent the notification to the `LabHook` Contact Point.
+The Python webhook receiver received information including:
+```text
+receiver: LabHook
+status: firing
+alertname: CPU High Ubuntu
+```
+The receiver responded with:
+```text
+HTTP 200 OK
+```
+This confirms that the complete alerting pipeline works successfully.
+### Screenshot
+
+<img width="636" height="357" alt="Grafana allerts" src="https://github.com/user-attachments/assets/ad77d16f-dec2-472c-b0ad-dd9925e934fc" />
+
+
+### What I Learned
+- How Grafana Alert Rules work
+- How Prometheus metrics can be used for alerting
+- How PromQL can calculate CPU utilization
+- How Grafana Contact Points work
+- How webhooks allow applications to communicate
+- How HTTP POST requests are used to send alert data
+- The difference between a web server and a website
+- How IP addresses and TCP ports identify services
+- How to create a simple HTTP server with Python
+- How Node Exporter, Prometheus and Grafana work together
+
 ## Next Steps
 
-- Configure Grafana alerts for CPU, memory and disk usage
+- Change the CPU alert threshold from the test value to a realistic value
+- Run the Python webhook receiver as a systemd service
+- Add Grafana alerts for memory and disk usage
+- Create alerts for unavailable hosts and services
 - Monitor SSH authentication events and Fail2Ban activity
-- Centralize and analyze system and security logs
-- Generate controlled test activity from the Kali Linux VM
-- Visualize security-relevant events in Grafana
-- Expand monitoring to additional hosts and services
+- Generate controlled security events from the Kali Linux VM
+- Build additional security-focused Grafana dashboards
+- Expand monitoring and logging to additional hosts and services
+- Continue improving alert routing and notification automation
 
