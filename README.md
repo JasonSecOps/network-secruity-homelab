@@ -1177,15 +1177,373 @@ This confirms that the complete alerting pipeline works successfully.
 - How to create a simple HTTP server with Python
 - How Node Exporter, Prometheus and Grafana work together
 
+## Routed Client Network with DHCP and DNS
+
+This project extends the existing security homelab with a separate client network, a Linux router, DHCP, DNS and routing between isolated subnets.
+
+### Network topology
+
+| System | Interface | IP address | Network | Purpose |
+|---|---|---:|---|---|
+| Ubuntu Router | `eth0` | `192.168.100.30/24` | Labnet | Connection to server network |
+| Ubuntu Router | `eth1` | DHCP address | Hyper-V Default Switch | Internet connection |
+| Ubuntu Router | `eth2` | `192.168.200.1/24` | Clientnet | Gateway for client systems |
+| Ubuntu Server | `eth0` | `192.168.100.20/24` | Labnet | Monitoring and logging server |
+| Kali Client | Clientnet adapter | DHCP address | Clientnet | Security testing client |
+
+The two internal networks are separated:
+
+- Labnet: `192.168.100.0/24`
+- Clientnet: `192.168.200.0/24`
+
+Ubuntu Router is connected to both networks and routes packets between them.
+
+<img width="226" height="113" alt="ubuntu 2 networkadapter" src="https://github.com/user-attachments/assets/46eeec49-63f5-4aa5-805e-755e811206fc" />
+
+
+### Configuring the Clientnet interface
+
+The Clientnet interface on Ubuntu Router was configured with the static address `192.168.200.1/24`.
+
+```bash
+sudo nmcli connection modify "Kabelgebundene Verbindung 2" \
+connection.interface-name eth2 \
+ipv4.method manual \
+ipv4.addresses 192.168.200.1/24 \
+ipv4.never-default yes \
+ipv6.method disabled
+```
+
+The connection was then activated:
+
+```bash
+sudo nmcli connection up "Kabelgebundene Verbindung 2"
+```
+
+The interface configuration was verified with:
+
+```bash
+ip -br address
+```
+
+`ipv4.never-default yes` prevents the Clientnet interface from replacing the router's internet-facing default route.
+
+### Enabling IPv4 forwarding
+
+Linux does not forward packets between interfaces by default. IPv4 forwarding was enabled temporarily for testing:
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+```
+
+The setting was made persistent:
+
+```bash
+echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-router.conf
+sudo sysctl --system
+```
+
+The active value was verified with:
+
+```bash
+sysctl net.ipv4.ip_forward
+```
+
+Expected result:
+
+```text
+net.ipv4.ip_forward = 1
+```
+
+### Installing DHCP and DNS
+
+`dnsmasq` was installed on Ubuntu Router to provide DHCP and DNS services for Clientnet.
+
+```bash
+sudo apt update
+sudo apt install dnsmasq
+```
+
+A dedicated configuration file was created:
+
+```bash
+sudo nano /etc/dnsmasq.d/clientnet.conf
+```
+
+Configuration:
+
+```ini
+interface=eth2
+bind-interfaces
+
+dhcp-range=192.168.200.100,192.168.200.150,255.255.255.0,12h
+dhcp-option=3,192.168.200.1
+dhcp-option=6,192.168.200.1
+
+domain=lab.test
+local=/lab.test/
+address=/router.lab.test/192.168.200.1
+
+no-resolv
+server=1.1.1.1
+server=9.9.9.9
+```
+
+Configuration explanation:
+
+- `interface=eth2` restricts DHCP and DNS to Clientnet.
+- `bind-interfaces` binds dnsmasq to the selected interface.
+- `dhcp-range` defines the available DHCP address pool.
+- DHCP option `3` provides the default gateway.
+- DHCP option `6` provides the DNS server.
+- `router.lab.test` resolves locally to `192.168.200.1`.
+- External DNS requests are forwarded to Cloudflare and Quad9.
+- `.test` is used instead of `.local`, because `.local` is reserved for Multicast DNS.
+
+The configuration syntax was checked before restarting the service:
+
+```bash
+sudo dnsmasq --test
+sudo systemctl restart dnsmasq
+systemctl status dnsmasq --no-pager
+```
+<img width="651" height="412" alt="dhcp dns server gateway config" src="https://github.com/user-attachments/assets/06596526-1fd5-423e-8e98-232ccd6881fe" />
+
+
+### Receiving a DHCP lease on Kali
+
+The Kali network adapter was connected to the Hyper-V `Clientnet` switch.
+
+Its existing static connection was changed to DHCP:
+
+```bash
+sudo nmcli connection modify "Wired connection 1" \
+ipv4.method auto \
+ipv4.addresses "" \
+ipv4.gateway "" \
+ipv4.dns ""
+```
+
+The connection was restarted:
+
+```bash
+sudo nmcli connection down "Wired connection 1"
+sudo nmcli connection up "Wired connection 1"
+```
+
+The assigned address and routes were verified:
+
+```bash
+ip -br address
+ip route
+```
+
+Kali received an address from the configured DHCP range:
+
+```text
+192.168.200.123/24
+```
+
+It also received Ubuntu Router as its default gateway:
+
+```text
+default via 192.168.200.1
+```
+
+<img width="630" height="236" alt="kali dhco" src="https://github.com/user-attachments/assets/b0477d5c-b56b-4586-9e53-47a047aa19cf" />
+
+
+### Testing gateway connectivity
+
+The gateway was tested from Kali:
+
+```bash
+ping -c 4 192.168.200.1
+```
+
+Successful replies confirmed Layer 3 connectivity between Kali and the Clientnet interface of Ubuntu Router.
+
+### Testing local DNS
+
+The locally configured DNS record was tested from Kali:
+
+```bash
+dig @192.168.200.1 router.lab.test
+```
+
+Expected answer:
+
+```text
+router.lab.test. IN A 192.168.200.1
+```
+<img width="635" height="389" alt="dns labtest " src="https://github.com/user-attachments/assets/a4758b6c-0dff-4331-a4e4-e0f47021e395" />
+
+
+### Configuring the return route
+
+Ubuntu Server in Labnet required a return route to Clientnet.
+
+A temporary route was initially added for testing:
+
+```bash
+sudo ip route add 192.168.200.0/24 via 192.168.100.30
+```
+
+The route tells Ubuntu Server to send traffic for `192.168.200.0/24` to Ubuntu Router at `192.168.100.30`.
+
+The route was then added permanently to the NetworkManager profile:
+
+```bash
+sudo nmcli connection modify "Labnet" \
++ipv4.routes "192.168.200.0/24 192.168.100.30"
+```
+
+The connection was reactivated:
+
+```bash
+sudo nmcli connection up "Labnet"
+```
+
+The stored and active routes were verified:
+
+```bash
+nmcli -f ipv4.routes connection show "Labnet"
+ip route
+```
+
+Expected route:
+
+```text
+192.168.200.0/24 via 192.168.100.30 dev eth0
+```
+
+### Testing routing between the subnets
+
+Connectivity from Kali in Clientnet to Ubuntu Server in Labnet was tested:
+
+```bash
+ping -c 4 192.168.100.20
+```
+
+The route was visualized with ICMP traceroute:
+
+```bash
+sudo traceroute --icmp 192.168.100.20
+```
+
+Expected path:
+
+```text
+1 192.168.200.1
+2 192.168.100.20
+```
+
+The first hop is Ubuntu Router in Clientnet. The second hop is Ubuntu Server in Labnet.
+
+<img width="619" height="101" alt="routing " src="https://github.com/user-attachments/assets/597c608b-ac1e-4a66-abd4-572993de1185" />
+
+
+### Testing external connectivity and DNS
+
+Internet connectivity was first tested without DNS:
+
+```bash
+ping -c 4 1.1.1.1
+```
+
+External DNS resolution through dnsmasq was then tested:
+
+```bash
+dig @192.168.200.1 youtube.com
+```
+
+Expected result:
+
+```text
+status: NOERROR
+```
+
+The answer must contain at least one public IP address for the requested domain.
+
+<img width="635" height="389" alt="dns labtest " src="https://github.com/user-attachments/assets/cb2cfb50-68a6-4366-8904-df68cd90d1ba" />
+
+
+### Troubleshooting
+
+#### dnsmasq could not bind to port 53
+
+During the first start, dnsmasq reported:
+
+```text
+failed to create listening socket for port 53:
+Address already in use
+```
+
+The occupied DNS sockets were inspected with:
+
+```bash
+sudo ss -lntup
+```
+
+`systemd-resolved` was already listening on the local stub addresses `127.0.0.53` and `127.0.0.54`.
+
+The dnsmasq configuration solved the conflict by restricting the service to the Clientnet interface:
+
+```ini
+interface=eth2
+bind-interfaces
+```
+
+#### Public IP addresses worked but websites did not
+
+A successful ping to `1.1.1.1` proved that basic internet routing worked. However, external DNS queries through dnsmasq initially returned:
+
+```text
+status: REFUSED
+```
+
+A direct query to Cloudflare worked:
+
+```bash
+dig @1.1.1.1 youtube.com
+```
+
+This isolated the problem to dnsmasq's upstream DNS configuration. It was corrected with:
+
+```ini
+no-resolv
+server=1.1.1.1
+server=9.9.9.9
+```
+
+This demonstrates why IP connectivity and DNS resolution should always be tested separately.
+
+### Result
+
+The completed lab now provides:
+
+- two isolated IPv4 subnets;
+- routing through an Ubuntu-based Linux router;
+- automatic client configuration through DHCP;
+- local DNS records;
+- external DNS forwarding;
+- persistent IPv4 forwarding;
+- a persistent return route;
+- verified communication between Clientnet and Labnet;
+- internet access for the isolated Kali client.
+- 
+
 ## Next Steps
 
-- Change the CPU alert threshold from the test value to a realistic value
-- Run the Python webhook receiver as a systemd service
-- Add Grafana alerts for memory and disk usage
-- Create alerts for unavailable hosts and services
-- Monitor SSH authentication events and Fail2Ban activity
-- Generate controlled security events from the Kali Linux VM
-- Build additional security-focused Grafana dashboards
-- Expand monitoring and logging to additional hosts and services
-- Continue improving alert routing and notification automation
+- Configure firewall rules between Clientnet and Labnet
+- Allow only required services such as SSH, HTTP and monitoring ports
+- Block unauthorized client-to-server connections
+- Verify all persistent routes and IPv4 forwarding after a reboot
+- Add local DNS records for the Ubuntu server and monitoring services
+- Monitor DHCP leases and DNS requests generated by dnsmasq
+- Forward router and dnsmasq logs to Loki
+- Create Grafana dashboards for network and DNS activity
+- Generate controlled security events from the Kali client
+- Containerize selected services with Docker
+- Expand the lab with additional isolated subnets and hosts
 
